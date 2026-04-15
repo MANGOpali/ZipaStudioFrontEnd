@@ -32,24 +32,13 @@ export async function POST(req: NextRequest) {
     const code = parsed?.errors?.[0]?.code;
     const title = parsed?.errors?.[0]?.title;
 
-    if (code === "unknown_foreground") {
-      return Response.json(
-        {
-          error: "Could not identify product clearly",
-          code,
-          details: title,
-        },
-        { status: 422 }
-      );
-    }
-
     return Response.json(
       {
-        error: "Background removal failed",
+        error: title || "Background removal failed",
         code: code || "remove_bg_error",
         details: title || errText,
       },
-      { status: 500 }
+      { status: response.status }
     );
   }
 

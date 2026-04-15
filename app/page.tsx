@@ -128,19 +128,6 @@ export default function Home() {
 
           <div className="rounded-2xl border border-[#dc136c]/15 bg-[#21101b] p-4">
             <p className="text-[10px] font-mono text-[#f4a8cb]/60 tracking-[1.6px] uppercase mb-3">
-              Output Rules
-            </p>
-            <div className="space-y-2 text-[12px] text-white/70 leading-relaxed">
-              <div>• Pure white background</div>
-              <div>• Square product image</div>
-              <div>• Product centered</div>
-              <div>• E-commerce ready output</div>
-              <div>• No lifestyle background</div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-[#dc136c]/15 bg-[#21101b] p-4">
-            <p className="text-[10px] font-mono text-[#f4a8cb]/60 tracking-[1.6px] uppercase mb-3">
               AI Enhancement
             </p>
 
@@ -159,7 +146,7 @@ export default function Home() {
                     {useAiEnhance ? "AI Enhance On" : "AI Enhance Off"}
                   </p>
                   <p className="text-[11px] mt-1 text-white/50">
-                    Tries wrinkle reduction and straightening first.
+                    Tries OpenAI first, then falls back to remove.bg.
                   </p>
                 </div>
 
@@ -178,9 +165,22 @@ export default function Home() {
             </button>
 
             <p className="text-[10px] text-white/35 mt-3 leading-relaxed">
-              If OpenAI is unavailable, the app will automatically fall back to
-              standard remove background + white background processing.
+              Best for testing only. Default product-safe workflow is remove.bg +
+              white background.
             </p>
+          </div>
+
+          <div className="rounded-2xl border border-[#dc136c]/15 bg-[#21101b] p-4">
+            <p className="text-[10px] font-mono text-[#f4a8cb]/60 tracking-[1.6px] uppercase mb-3">
+              Output Rules
+            </p>
+            <div className="space-y-2 text-[12px] text-white/70 leading-relaxed">
+              <div>• Pure white background</div>
+              <div>• Square product image</div>
+              <div>• Product centered</div>
+              <div>• E-commerce ready output</div>
+              <div>• No lifestyle background</div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3">
@@ -287,7 +287,7 @@ async function processSingleImage(
         update(img.id, { step: 0, progress: 15 });
         const editedUrl = await callOpenAIEdit(img.file);
 
-        update(img.id, { step: 1, progress: 65 });
+        update(img.id, { step: 1, progress: 70 });
         finalUrl = await callCloudinary(editedUrl);
       } catch (openAiErr) {
         console.warn(
@@ -295,24 +295,24 @@ async function processSingleImage(
           openAiErr
         );
 
-        update(img.id, { step: 0, progress: 35 });
+        update(img.id, { step: 0, progress: 40 });
         const removedBgUrl = await callRemoveBg(img.file);
 
-        update(img.id, { step: 1, progress: 75 });
+        update(img.id, { step: 1, progress: 80 });
         finalUrl = await callCloudinary(removedBgUrl);
       }
     } else {
-      update(img.id, { step: 0, progress: 35 });
+      update(img.id, { step: 0, progress: 40 });
       const removedBgUrl = await callRemoveBg(img.file);
 
-      update(img.id, { step: 1, progress: 75 });
+      update(img.id, { step: 1, progress: 80 });
       finalUrl = await callCloudinary(removedBgUrl);
     }
 
     update(img.id, {
       status: "done",
       progress: 100,
-      step: 3,
+      step: 2,
       processedUrl: finalUrl,
     });
   } catch (err) {
@@ -333,7 +333,13 @@ async function callRemoveBg(file: File): Promise<string> {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data.details || data.error || "remove-bg failed");
+    const message = data.details || data.error || "remove-bg failed";
+
+    if (String(message).toLowerCase().includes("insufficient credits")) {
+      throw new Error("remove.bg credits are finished. Recharge remove.bg to continue.");
+    }
+
+    throw new Error(message);
   }
 
   return data.resultUrl;
@@ -343,7 +349,7 @@ async function callCloudinary(imageUrl: string): Promise<string> {
   const res = await fetch("/api/apply-background", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageUrl, mode: "zipa-white" }),
+    body: JSON.stringify({ imageUrl }),
   });
 
   const data = await res.json();

@@ -9,8 +9,7 @@ type ImageFile = {
   processedUrl?: string;
   file: File;
 };
-
-const STEP_LABELS = ["Removing BG", "White Background", "Resizing"];
+const STEP_LABELS = ["Processing", "White Background", "Done"];
 
 const STATUS_STYLES: Record<ImageFile["status"], string> = {
   pending: "bg-white/10 text-white/45 border border-white/10",

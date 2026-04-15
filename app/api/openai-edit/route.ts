@@ -1,12 +1,19 @@
 import { NextRequest } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(req: NextRequest) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return Response.json(
+        { error: "OPENAI_API_KEY is not configured" },
+        { status: 500 }
+      );
+    }
+
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
@@ -18,33 +25,49 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(bytes);
 
     const prompt = `
-Edit this product image for e-commerce use.
+Perform a NON-GENERATIVE edit of this product image.
 
-Rules:
-- Remove the background completely and replace with pure white (#FFFFFF)
-- Keep the exact same product
-- No color change
-- No brightness shift
-- No logo change
-- No text change
-- No stitching change
-- No design change
-- Keep the exact same zipper, sleeves, pockets, proportions, and length
-- Straighten the garment so it looks aligned and neat
-- Reduce minor wrinkles carefully only if it does not alter the product
-- Do not remove natural folds that define the product shape
-- Center the product
-- Square composition
-- Clean, realistic product photo
-    `.trim();
+CRITICAL REQUIREMENTS:
+- Preserve the original product exactly
+- Do NOT recreate, redraw, restyle, or reimagine the product
+- Do NOT change logo, print, text, stitching, folds, seams, shape, proportions, or length
+- Do NOT change color, brightness, contrast, or fabric texture
+- Do NOT crop the product
+- Do NOT zoom in
+- Do NOT enlarge the top area
+- Do NOT shrink the lower part
+- Keep the exact same overall size and proportions as the original product
 
-    const result = await client.images.edit({
-      model: "gpt-image-1",
-      image: new File([buffer], file.name || "product.png", {
-        type: file.type || "image/png",
-      }),
-      prompt,
-    });
+EDIT ONLY:
+- Remove the background
+- Remove mannequin, hanger, and surrounding background objects
+- Replace background with pure white (#FFFFFF only)
+
+COMPOSITION:
+- Output must be square 1:1
+- Keep the FULL product visible from top to bottom
+- Keep equal padding around the product
+- Center the product vertically and horizontally
+- Keep the product straight and aligned
+- Do not let the top touch the frame
+- Do not cut sleeves, hem, shoulders, or neckline
+
+OUTPUT:
+- Realistic e-commerce product image
+- Pure white background only
+- No shadow, no glow, no gradient
+- Must look like the original real product photo placed on white background
+`.trim();
+
+   const result = await client.images.edit({
+  model: "gpt-image-1.5",
+  image: new File([buffer], file.name || "product.png", {
+    type: file.type || "image/png",
+  }),
+  prompt,
+  size: "1024x1024",
+  output_format: "png",
+});
 
     const base64 = result.data?.[0]?.b64_json;
 
