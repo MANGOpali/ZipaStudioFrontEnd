@@ -7,17 +7,36 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET!,
 });
 
+export const runtime = "nodejs";
+
 export async function POST(req: NextRequest) {
   try {
-    const { imageUrl } = await req.json();
+    // Read the compressed image blob sent as FormData from page.tsx
+    const formData = await req.formData();
+    const file = formData.get("file");
 
-    if (!imageUrl) {
-      return Response.json({ error: "Missing imageUrl" }, { status: 400 });
+    if (!file || !(file instanceof Blob)) {
+      return Response.json({ error: "Missing file in form data" }, { status: 400 });
     }
 
-    const uploaded = await cloudinary.uploader.upload(imageUrl, {
-      folder: "imageforge",
-      resource_type: "image",
+    // Convert Blob → Buffer for Cloudinary upload stream
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Upload via stream — avoids writing a temp file to disk
+    const uploaded = await new Promise<{ public_id: string }>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "imageforge",
+          resource_type: "image",
+          format: "png",
+        },
+        (error, result) => {
+          if (error || !result) return reject(error ?? new Error("Upload failed"));
+          resolve(result);
+        }
+      );
+      stream.end(buffer);
     });
 
     if (!uploaded?.public_id) {
@@ -25,7 +44,20 @@ export async function POST(req: NextRequest) {
     }
 
     const resultUrl = cloudinary.url(uploaded.public_id, {
+      secure: true,
       transformation: [
+        // Step 1: Shrink product to 85% of the output frame.
+        // "fit" preserves aspect ratio and never crops — only shrinks.
+        // This ensures white padding is always visible around the product,
+        // even when GPT-image-1.5 outputs a full-bleed image like jeans.
+        {
+          width: 1700,
+          height: 1700,
+          crop: "fit",
+          gravity: "center",
+        },
+        // Step 2: Pad out to 2000x2000 with pure white background.
+        // Product is already at 85% so this always adds visible breathing room.
         {
           width: 2000,
           height: 2000,
@@ -33,16 +65,16 @@ export async function POST(req: NextRequest) {
           background: "white",
           gravity: "center",
         },
-        {
-          format: "png",
-        },
+        { format: "png" },
       ],
-      secure: true,
     });
 
-    return Response.json({ resultUrl });
+    return Response.json({
+      resultUrl,
+      publicId: uploaded.public_id,
+    });
   } catch (err: any) {
-    console.error("Cloudinary error:", err?.message || err);
+    console.error("apply-background error:", err);
     return Response.json(
       { error: err?.message || "Unknown error" },
       { status: 500 }

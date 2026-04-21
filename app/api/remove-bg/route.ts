@@ -1,50 +1,73 @@
 import { NextRequest } from "next/server";
 
+export const runtime = "nodejs";
+
+const RMBG_API_URL = process.env.RMBG_API_URL || "http://127.0.0.1:8000";
+
 export async function POST(req: NextRequest) {
-  const formData = await req.formData();
-  const file = formData.get("file") as File;
+  try {
+    const formData = await req.formData();
+    const file = formData.get("file");
+    const mode = String(formData.get("mode") || "none");
+    const garmentHint = String(formData.get("garment_hint") || "auto");
 
-  if (!file) {
-    return Response.json({ error: "No file provided" }, { status: 400 });
-  }
+    if (!file || !(file instanceof File)) {
+      return Response.json({ error: "No valid file provided" }, { status: 400 });
+    }
 
-  const removeBgForm = new FormData();
-  removeBgForm.append("image_file", file);
-  removeBgForm.append("size", "auto");
+    if (!file.type.startsWith("image/")) {
+      return Response.json({ error: "Only image files are allowed" }, { status: 400 });
+    }
 
-  const response = await fetch("https://api.remove.bg/v1.0/removebg", {
-    method: "POST",
-    headers: {
-      "X-Api-Key": process.env.REMOVEBG_API_KEY!,
-    },
-    body: removeBgForm,
-  });
+    if (file.size === 0) {
+      return Response.json({ error: "Uploaded file is empty" }, { status: 400 });
+    }
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Remove.bg error:", errText);
+    const rmbgForm = new FormData();
+    rmbgForm.append("file", file, file.name);
+    rmbgForm.append("mode", mode);
+    rmbgForm.append("garment_hint", garmentHint);
 
-    let parsed: any = null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 180000);
+
+    let response: Response;
+
     try {
-      parsed = JSON.parse(errText);
-    } catch {}
+      response = await fetch(`${RMBG_API_URL}/remove-bg`, {
+        method: "POST",
+        body: rmbgForm,
+        signal: controller.signal,
+        cache: "no-store",
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
-    const code = parsed?.errors?.[0]?.code;
-    const title = parsed?.errors?.[0]?.title;
+    if (!response.ok) {
+      const errText = await response.text();
 
-    return Response.json(
-      {
-        error: title || "Background removal failed",
-        code: code || "remove_bg_error",
-        details: title || errText,
-      },
-      { status: response.status }
-    );
+      return Response.json(
+        {
+          error: "Background removal API failed",
+          upstreamStatus: response.status,
+          details: errText,
+        },
+        { status: 502 }
+      );
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const resultUrl = `data:image/png;base64,${base64}`;
+
+    return Response.json({ resultUrl });
+  } catch (err: any) {
+    const message =
+      err?.name === "AbortError"
+        ? "Background removal request timed out"
+        : err?.message || "Background removal failed";
+
+    return Response.json({ error: message }, { status: 500 });
   }
-
-  const resultBuffer = await response.arrayBuffer();
-  const base64 = Buffer.from(resultBuffer).toString("base64");
-  const resultUrl = `data:image/png;base64,${base64}`;
-
-  return Response.json({ resultUrl });
 }
