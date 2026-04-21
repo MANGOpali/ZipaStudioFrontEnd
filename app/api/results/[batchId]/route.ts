@@ -6,18 +6,17 @@ const RMBG_API_URL = process.env.RMBG_API_URL || "http://127.0.0.1:8000";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { batchId: string } }
+  { params }: { params: Promise<{ batchId: string }> }
 ) {
   try {
-    const { batchId } = params;
+    const { batchId } = await params;
 
     if (!batchId) {
       return Response.json({ error: "Missing batchId" }, { status: 400 });
     }
 
     const controller = new AbortController();
-    // Results download can be large (100 images worth of Cloudinary URLs)
-    const timeout = setTimeout(() => controller.abort(), 120_000); // 2 minutes
+    const timeout = setTimeout(() => controller.abort(), 120_000);
 
     let response: Response;
 
@@ -31,7 +30,6 @@ export async function GET(
       clearTimeout(timeout);
     }
 
-    // 202 means batch not ready yet — pass it through cleanly to the frontend
     if (response.status === 202) {
       const data = await response.json();
       return Response.json(data, { status: 202 });

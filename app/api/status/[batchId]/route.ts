@@ -6,17 +6,17 @@ const RMBG_API_URL = process.env.RMBG_API_URL || "http://127.0.0.1:8000";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { batchId: string } }
+  { params }: { params: Promise<{ batchId: string }> }
 ) {
   try {
-    const { batchId } = params;
+    const { batchId } = await params;
 
     if (!batchId) {
       return Response.json({ error: "Missing batchId" }, { status: 400 });
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000); // 15s
+    const timeout = setTimeout(() => controller.abort(), 15_000);
 
     let response: Response;
 
